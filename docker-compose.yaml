@@ -1,0 +1,80 @@
+version: "3.1"
+
+services:
+  api_instance_a:
+      container_name: api_instance_a
+      build:
+        context: .
+        dockerfile: Dockerfile
+      volumes:
+        - ./src:/home/foo/rinha-de-backend-2024-q1/src
+      ports:
+        - '127.0.0.1:8000:8000'
+      env_file:
+        - .env
+      environment:
+        INSTANCE_BIND: "127.0.0.1:8000"
+        INSTANCE_WORKERS: "2"
+      deploy:
+        resources:
+          limits:
+            cpus: '0.25'
+            memory: '150MB'
+      network_mode: "host"
+
+  api_instance_b:
+    container_name: api_instance_b
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./src:/home/foo/rinha-de-backend-2024-q1/src
+    ports:
+      - '127.0.0.1:8001:8001'
+    env_file:
+      - .env
+    environment:
+      INSTANCE_BIND: "127.0.0.1:8001"
+      INSTANCE_WORKERS: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: '150MB'
+    depends_on:
+      - api_instance_a
+    network_mode: "host"
+
+  redis_db:
+    container_name: redis_db
+    image: redis
+    command: redis-server --save "" --appendonly no --maxclients 10000
+    ports:
+      - '127.0.0.1:6379:6379'
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '150MB'
+    network_mode: "host"
+
+  nginx_server:
+    container_name: nginx_server
+    restart: always
+    image: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - target: 9999
+        published: 9999
+        protocol: tcp
+        mode: host
+    environment:
+      - TZ=America/Sao_Paulo
+      - DEBIAN_FRONTEND=noninteractive
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '100MB'
+    network_mode: "host"
