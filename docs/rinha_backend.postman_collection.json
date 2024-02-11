@@ -1,0 +1,61 @@
+{
+	"info": {
+		"_postman_id": "3acaeb63-8ebd-4565-8756-82ca0d5e8eb1",
+		"name": "rinha_backend",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "13997612"
+	},
+	"item": [
+		{
+			"name": "/clientes/[id]/transacoes",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"valor\": 70000,\n    \"tipo\" : \"c\",\n    \"descricao\" : \"descricao\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:5000/clientes/2/transacoes",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5000",
+					"path": [
+						"clientes",
+						"2",
+						"transacoes"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "/clientes/[id]/extrato",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:5000/clientes/2/extrato",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "5000",
+					"path": [
+						"clientes",
+						"2",
+						"extrato"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
