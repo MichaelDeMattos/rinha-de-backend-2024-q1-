@@ -13,7 +13,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"valor\": 70000,\n    \"tipo\" : \"c\",\n    \"descricao\" : \"descricao\"\n}",
+					"raw": "{\n    \"valor\": 230,\n    \"tipo\" : \"c\",\n    \"descricao\" : \"descricao\"\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -21,15 +21,15 @@
 					}
 				},
 				"url": {
-					"raw": "http://localhost:5000/clientes/2/transacoes",
+					"raw": "http://localhost:9999/clientes/1/transacoes",
 					"protocol": "http",
 					"host": [
 						"localhost"
 					],
-					"port": "5000",
+					"port": "9999",
 					"path": [
 						"clientes",
-						"2",
+						"1",
 						"transacoes"
 					]
 				}
@@ -42,15 +42,15 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "http://localhost:5000/clientes/2/extrato",
+					"raw": "http://localhost:9999/clientes/1/extrato",
 					"protocol": "http",
 					"host": [
 						"localhost"
 					],
-					"port": "5000",
+					"port": "9999",
 					"path": [
 						"clientes",
-						"2",
+						"1",
 						"extrato"
 					]
 				}
