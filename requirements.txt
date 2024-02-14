@@ -26,3 +26,4 @@ tenacity==8.0.1
 typing_extensions==4.9.0
 Werkzeug==3.0.1
 wsproto==1.2.0
+fdb==2.0.2

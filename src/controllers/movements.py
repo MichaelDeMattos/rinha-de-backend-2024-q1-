@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from utils.http import http_status_message
 from schemas.movements import TransactionSchema
 from services.movements import MovementsService
-from quart import Blueprint, make_response, jsonify, request
+from quart import Blueprint, make_response, jsonify, request, current_app
 
 movements_bp = Blueprint('movements', __name__)
 
@@ -22,7 +22,7 @@ async def transactions_api(client_id: int) -> make_response:
         body_parse = json.loads(body)
         body_parse.update({'id': client_id})
         validated_inputted_params = TransactionSchema(**body_parse)
-        movements_object = MovementsService(inputted_params=validated_inputted_params)
+        movements_object = MovementsService(inputted_params=validated_inputted_params, app_config=current_app.config)
         http_status, http_message = await movements_object.update_current_user_account_position()
         return await make_response(
             jsonify(http_message) if http_status == 200 else http_message, http_status)
@@ -46,7 +46,7 @@ async def statement_api(client_id: int) -> make_response:
     :return: make_response = http_response
     """
     try:
-        movements_object = MovementsService(client_id=client_id)
+        movements_object = MovementsService(client_id=client_id, app_config=current_app.config)
         http_status, http_message = await movements_object.get_client_statement()
         return await make_response(
             jsonify(http_message) if http_status == 200 else http_message, http_status)

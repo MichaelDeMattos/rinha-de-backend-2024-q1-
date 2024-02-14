@@ -15,6 +15,7 @@ services:
       environment:
         INSTANCE_BIND: "127.0.0.1:8000"
         INSTANCE_WORKERS: "2"
+        INSTANCE_NAME: "api_instance_a"
       deploy:
         resources:
           limits:
@@ -36,6 +37,7 @@ services:
     environment:
       INSTANCE_BIND: "127.0.0.1:8001"
       INSTANCE_WORKERS: "2"
+      INSTANCE_NAME: "api_instance_b"
     deploy:
       resources:
         limits:
@@ -45,17 +47,23 @@ services:
       - api_instance_a
     network_mode: "host"
 
-  redis_db:
-    container_name: redis_db
-    image: redis
-    command: redis-server --save "" --appendonly no --maxclients 10000
+  firebird_db:
+    container_name: firebird_db
+    image: jacobalberty/firebird
     ports:
-      - '127.0.0.1:6379:6379'
+      - '127.0.0.1:3050:3050'
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: '150MB'
+          cpus: '0.75'
+          memory: '100MB'
+    env_file:
+      - .env
+    environment:
+      FIREBIRD_USER: ${FIREBIRD_USER}
+      FIREBIRD_PASSWORD: ${FIREBIRD_PASSWORD}
+      TZ: ${TZ}
+      FIREBIRD_DATABASE: ${FIREBIRD_DATABASE}
     network_mode: "host"
 
   nginx_server:
@@ -75,6 +83,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.25'
           memory: '100MB'
     network_mode: "host"
