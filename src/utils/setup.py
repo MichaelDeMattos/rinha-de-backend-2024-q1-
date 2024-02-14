@@ -57,8 +57,51 @@ async def create_table() -> bool:
                     UTL_TRANS_TIPO CHAR(1) CHECK (UTL_TRANS_TIPO IN ('c', 'd')),
                     UTL_TRANS_VALOR INTEGER,
                     CONSTRAINT MOV_PK PRIMARY KEY (ID))''')
+            # set default CURRENT_TIMESTAMP for UTL_TRANS_REAL_EM
             cursor.execute(
                 'ALTER TABLE MOVEMENTS ALTER COLUMN UTL_TRANS_REAL_EM SET DEFAULT CURRENT_TIMESTAMP')
+            # create procedure for select movements
+            cursor.execute('''
+                CREATE PROCEDURE GET_MOVEMENTS (ClientID INT)
+                RETURNS (
+                    ID INT,
+                    CLI_ID INT,
+                    CLI_LIM_ORG INT,
+                    SALDO_TOTAL INT,
+                    SALDO_LIM INT,
+                    UTL_TRANS_DESC VARCHAR(10),
+                    UTL_TRANS_REAL_EM TIMESTAMP,
+                    UTL_TRANS_TIPO CHAR(1),
+                    UTL_TRANS_VALOR INT)
+                AS
+                BEGIN
+                    FOR SELECT FIRST 10
+                            MV.ID,
+                            MV.CLI_ID,
+                            MV.CLI_LIM_ORG,
+                            MV.SALDO_TOTAL,
+                            MV.SALDO_LIM,
+                            MV.UTL_TRANS_DESC,
+                            MV.UTL_TRANS_REAL_EM,
+                            MV.UTL_TRANS_TIPO,
+                            MV.UTL_TRANS_VALOR
+                        FROM MOVEMENTS AS MV
+                        WHERE MV.CLI_ID = :ClientID
+                        ORDER BY MV.ID DESC
+                    INTO :ID,
+                         :CLI_ID,
+                         :CLI_LIM_ORG,
+                         :SALDO_TOTAL,
+                         :SALDO_LIM,
+                         :UTL_TRANS_DESC,
+                         :UTL_TRANS_REAL_EM,
+                         :UTL_TRANS_TIPO,
+                         :UTL_TRANS_VALOR
+                    DO
+                    BEGIN
+                        SUSPEND;
+                    END
+                END''')
             connection.commit()
             return True
     except Exception:

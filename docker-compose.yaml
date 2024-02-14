@@ -14,13 +14,13 @@ services:
         - .env
       environment:
         INSTANCE_BIND: "127.0.0.1:8000"
-        INSTANCE_WORKERS: "2"
+        INSTANCE_WORKERS: "1"
         INSTANCE_NAME: "api_instance_a"
       deploy:
         resources:
           limits:
             cpus: '0.25'
-            memory: '150MB'
+            memory: '175MB'
       network_mode: "host"
 
   api_instance_b:
@@ -36,13 +36,13 @@ services:
       - .env
     environment:
       INSTANCE_BIND: "127.0.0.1:8001"
-      INSTANCE_WORKERS: "2"
+      INSTANCE_WORKERS: "1"
       INSTANCE_NAME: "api_instance_b"
     deploy:
       resources:
         limits:
           cpus: '0.25'
-          memory: '150MB'
+          memory: '175MB'
     depends_on:
       - api_instance_a
     network_mode: "host"
@@ -84,5 +84,5 @@ services:
       resources:
         limits:
           cpus: '0.25'
-          memory: '100MB'
+          memory: '50MB'
     network_mode: "host"

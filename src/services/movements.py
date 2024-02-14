@@ -46,37 +46,24 @@ class MovementsService(object):
                     user=self.app_config.get("FIREBIRD_USER"),
                     password=self.app_config.get("FIREBIRD_PASSWORD")) as connection:
                 cursor = connection.cursor()
-                rows = cursor.execute('''
-                    SELECT FIRST ?
-                        ID,
-                        CLI_ID,
-                        CLI_LIM_ORG,
-                        SALDO_TOTAL,
-                        SALDO_LIM,
-                        UTL_TRANS_DESC,
-                        UTL_TRANS_REAL_EM,
-                        UTL_TRANS_TIPO,
-                        UTL_TRANS_VALOR
-                    FROM MOVEMENTS AS MV
-                    WHERE CLI_ID = ?
-                    ORDER BY ID DESC''', (limit, client_id)).fetchall()
+                rows = cursor.execute('''SELECT * FROM GET_MOVEMENTS(?)''', (client_id,)).fetchall()
                 if rows:
                     last_operations = []
                     for row in list(filter(lambda x: (x[5] != "balance-0"), rows)):
                         last_operations.append({
-                            'valor': row[8],
-                            'tipo': row[7],
-                            'descricao': row[5],
+                            'valor': int(row[8]),
+                            'tipo': str(row[7]),
+                            'descricao': str(row[5]),
                             'realizada_em': row[6].strftime('%Y-%m-%dT%H:%M:%S.%fZ')})
                     return {
                         'saldo': {
-                            'total': rows[0][3],
-                            'limite': rows[0][4],
+                            'total': int(rows[0][3]),
+                            'limite': int(rows[0][4]),
                         },
                         'ultimas_transacoes': last_operations,
                         'cliente': {
-                            'id': rows[0][1],
-                            'limite': rows[0][2]}
+                            'id': int(rows[0][1]),
+                            'limite': int(rows[0][2])}
                     }
                 else:
                     return {}
@@ -120,7 +107,6 @@ class MovementsService(object):
                 connection.commit()
                 return True
         except Exception:
-            connection.rollback()
             traceback.print_exc()
             return False
 

@@ -6,5 +6,5 @@ from pydantic import BaseModel, constr
 class TransactionSchema(BaseModel):
     id: int
     valor: int
-    tipo: constr(regex='^[cd]$')
-    descricao: constr(max_length=10)
+    tipo: str # constr(regex='^[cd]$')
+    descricao: constr(min_length=1, max_length=10)
