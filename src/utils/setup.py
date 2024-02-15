@@ -38,12 +38,20 @@ async def create_table() -> bool:
     try:
         with fdb.connect(dsn=FIREBIRD_DSN, user=FIREBIRD_USER, password=FIREBIRD_PASSWORD) as connection:
             cursor = connection.cursor()
-            # drop old table
+            # drop old struct
             try:
+                cursor.execute('DROP EXCEPTION LIMIT_EXCEEDED')
+                cursor.execute('DROP EXCEPTION CLIENT_NOT_FOUND')
                 cursor.execute('DROP TABLE MOVEMENTS')
+                cursor.execute('DROP PROCEDURE GET_MOVEMENTS')
+                cursor.execute('DROP PROCEDURE INSERT_CREDIT_ON_MOVEMENTS')
+                cursor.execute('DROP PROCEDURE INSERT_DEBIT_ON_MOVEMENTS')
                 connection.commit()
             except Exception:
                 pass
+            # create exceptions
+            cursor.execute(''' CREATE EXCEPTION LIMIT_EXCEEDED 'Limit exceeded' ''')
+            cursor.execute(''' CREATE EXCEPTION CLIENT_NOT_FOUND 'Client not found' ''')
             # create empty table
             cursor.execute('''
                 CREATE TABLE MOVEMENTS (
@@ -51,7 +59,7 @@ async def create_table() -> bool:
                     CLI_ID INTEGER NOT NULL,
                     CLI_LIM_ORG INTEGER NOT NULL,
                     SALDO_TOTAL INTEGER NOT NULL,
-                    SALDO_LIM INTEGER NOT NULL CHECK (SALDO_LIM > 0),
+                    SALDO_LIM INTEGER NOT NULL CHECK (SALDO_LIM >= 0),
                     UTL_TRANS_DESC VARCHAR(10),
                     UTL_TRANS_REAL_EM TIMESTAMP NOT NULL,
                     UTL_TRANS_TIPO CHAR(1) CHECK (UTL_TRANS_TIPO IN ('c', 'd')),
@@ -101,6 +109,92 @@ async def create_table() -> bool:
                     BEGIN
                         SUSPEND;
                     END
+                END''')
+            cursor.execute('''
+                CREATE PROCEDURE INSERT_CREDIT_ON_MOVEMENTS (ClientID INT, TransValor INT, TransDesc VARCHAR(10))
+                RETURNS (RET_SALDO_LIM INT, RET_SALDO_TOTAL INT)
+                AS
+                DECLARE
+                    TOTAL INT;
+                DECLARE
+                    LIMITE INT;
+                DECLARE
+                    OLD_CLI_LIM_ORG INT;	
+                DECLARE
+                    OLD_SALDO_TOTAL INT;
+                DECLARE
+                    OLD_SALDO_LIM INT;
+                BEGIN
+                    SELECT FIRST 1 MV.CLI_LIM_ORG, MV.SALDO_TOTAL, MV.SALDO_LIM
+                    FROM MOVEMENTS AS MV
+                    WHERE MV.CLI_ID = :ClientID
+                    ORDER BY MV.ID DESC
+                    INTO :OLD_CLI_LIM_ORG, :OLD_SALDO_TOTAL, :OLD_SALDO_LIM;
+                    TOTAL = OLD_SALDO_TOTAL + TransValor;
+                    LIMITE = OLD_SALDO_LIM + TransValor;
+                    IF (LIMITE > OLD_CLI_LIM_ORG) THEN
+                    BEGIN
+                        LIMITE = OLD_CLI_LIM_ORG;
+                    END
+                    INSERT INTO MOVEMENTS
+                        (CLI_ID, CLI_LIM_ORG, SALDO_TOTAL,
+                         SALDO_LIM, UTL_TRANS_DESC, UTL_TRANS_REAL_EM,
+                         UTL_TRANS_TIPO, UTL_TRANS_VALOR)
+                    VALUES
+                        (:ClientID, :OLD_CLI_LIM_ORG, :TOTAL,
+                         :LIMITE, :TransDesc, CURRENT_TIMESTAMP,
+                         'c', :TransValor);
+                    RET_SALDO_LIM = LIMITE;
+                    RET_SALDO_TOTAL = TOTAL;
+                END''')
+            cursor.execute('''
+                CREATE PROCEDURE INSERT_DEBIT_ON_MOVEMENTS (ClientID INT, TransValor INT, TransDesc VARCHAR(10))
+                RETURNS (RET_SALDO_LIM INT, RET_SALDO_TOTAL INT)
+                AS
+                DECLARE
+                    TOTAL INT;
+                DECLARE
+                    LIMITE INT;
+                DECLARE
+                    OLD_CLI_LIM_ORG INT;	
+                DECLARE
+                    OLD_SALDO_TOTAL INT;
+                DECLARE
+                    OLD_SALDO_LIM INT;
+                BEGIN
+                    SELECT FIRST 1 MV.CLI_LIM_ORG, MV.SALDO_TOTAL, MV.SALDO_LIM
+                    FROM MOVEMENTS AS MV
+                    WHERE MV.CLI_ID = :ClientID
+                    ORDER BY MV.ID DESC
+                    INTO :OLD_CLI_LIM_ORG, :OLD_SALDO_TOTAL, :OLD_SALDO_LIM;
+                    -- VALID CLIENT
+                    IF (OLD_CLI_LIM_ORG IS NULL OR OLD_SALDO_TOTAL IS NULL OR OLD_SALDO_LIM IS NULL) THEN
+                    BEGIN
+                        EXCEPTION CLIENT_NOT_FOUND 'Client not found';
+                    END
+                    -- UPDATE TOTAL
+                    TOTAL = OLD_SALDO_TOTAL + TransValor;
+                    LIMITE = OLD_CLI_LIM_ORG - ABS(TOTAL);
+                    IF (TOTAL > 0) THEN
+                    BEGIN
+                        LIMITE = OLD_CLI_LIM_ORG;
+                    END
+                    IF (LIMITE < 0) THEN
+                    BEGIN
+                        EXCEPTION LIMIT_EXCEEDED 'Limit exceeded';
+                    END
+                    -- INSERT NEW RECORD
+                    INSERT INTO MOVEMENTS
+                        (CLI_ID, CLI_LIM_ORG, SALDO_TOTAL,
+                         SALDO_LIM, UTL_TRANS_DESC, UTL_TRANS_REAL_EM,
+                         UTL_TRANS_TIPO, UTL_TRANS_VALOR)
+                    VALUES
+                        (:ClientID, :OLD_CLI_LIM_ORG, :TOTAL,
+                         :LIMITE, :TransDesc, CURRENT_TIMESTAMP,
+                         'd', ABS(:TransValor)); 
+                    -- RETURNING VALUES
+                    RET_SALDO_LIM = LIMITE;
+                    RET_SALDO_TOTAL = TOTAL;
                 END''')
             connection.commit()
             return True
