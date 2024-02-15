@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import fdb
 import traceback
 from engines import engine
 from datetime import datetime
@@ -17,22 +18,6 @@ class MovementsService(object):
         self.inputted_params = inputted_params
         self.client_id = client_id
         self.app_config = app_config
-
-    async def get_client_statement(self) -> tuple:
-        """
-        :return: http_status, http_message
-        """
-        try:
-            if client_account := await self.get_client_position_account(client_id=self.client_id, limit=10):
-                balance = client_account.get('saldo')
-                balance['data_extrato'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-                last_operations = client_account.get('ultimas_transacoes')
-                return 200, {'saldo': balance, 'ultimas_transacoes': last_operations}
-            else:
-                return 404, f'404 - {await http_status_message(404)}'
-        except Exception:
-            traceback.print_exc()
-            return 503, f'503 - {await http_status_message(503)}'
 
     async def get_client_position_account(self, client_id: int, limit: int = 1) -> dict:
         """
@@ -68,6 +53,22 @@ class MovementsService(object):
             traceback.print_exc()
             return {}
 
+    async def get_client_statement(self) -> tuple:
+        """
+        :return: http_status, http_message
+        """
+        try:
+            if client_account := await self.get_client_position_account(client_id=self.client_id, limit=10):
+                balance = client_account.get('saldo')
+                balance['data_extrato'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+                last_operations = client_account.get('ultimas_transacoes')
+                return 200, {'saldo': balance, 'ultimas_transacoes': last_operations}
+            else:
+                return 404, f'404 - {await http_status_message(404)}'
+        except Exception:
+            traceback.print_exc()
+            return 503, f'503 - {await http_status_message(503)}'
+
     async def insert_new_operation(self, cli_id: int, trans_valor: int, trans_desc: str, trans_tipo: str) -> tuple:
         """
         :param cli_id: int
@@ -77,16 +78,14 @@ class MovementsService(object):
         :return: dict
         """
         try:
-            with fdb.connect(
-                    dsn=self.app_config.get("FIREBIRD_DSN"),
-                    user=self.app_config.get("FIREBIRD_USER"),
-                    password=self.app_config.get("FIREBIRD_PASSWORD")) as connection:
-                cursor = connection.cursor()
+            async with engine.connect() as session:
                 if trans_tipo == 'c':
                     try:
-                        limite, saldo = cursor.execute('EXECUTE PROCEDURE INSERT_CREDIT_ON_MOVEMENTS(?, ?, ?)',
-                                                       (cli_id, abs(trans_valor), trans_desc)).fetchone()
-                        connection.commit()
+                        result = await session.execute(
+                            text('EXECUTE PROCEDURE INSERT_CREDIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
+                            {'client_id': cli_id,  'trans_valor': abs(trans_valor), 'trans_desc': trans_desc})
+                        limite, saldo = result.fetchone()
+                        await session.commit()
                         return 200, {'limite': limite, 'saldo': saldo}
                     except fdb.fbcore.DatabaseError as e:
                         if 'CLIENT_NOT_FOUND' in e.args[0]:
@@ -95,9 +94,11 @@ class MovementsService(object):
                             return 422, f'422 - {await http_status_message(422)}'
                 elif trans_tipo == 'd':
                     try:
-                        limite, saldo = cursor.execute('EXECUTE PROCEDURE INSERT_DEBIT_ON_MOVEMENTS(?, ?, ?)',
-                                                       (cli_id, abs(trans_valor) * -1, trans_desc)).fetchone()
-                        connection.commit()
+                        result = await session.execute(
+                            text('EXECUTE PROCEDURE INSERT_DEBIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
+                            {'client_id': cli_id, 'trans_valor': abs(trans_valor), 'trans_desc': trans_desc})
+                        limite, saldo = result.fetchone()
+                        await session.commit()
                         return 200, {'limite': limite, 'saldo': saldo}
                     except fdb.fbcore.DatabaseError as e:
                         print(e.args[0])
