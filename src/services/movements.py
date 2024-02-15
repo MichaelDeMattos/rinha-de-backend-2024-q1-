@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import fdb
-import json
 import traceback
+from engines import engine
 from datetime import datetime
-from flask import current_app
+from sqlalchemy import text
 from utils.http import http_status_message
 from schemas.movements import TransactionSchema
 
@@ -41,12 +40,10 @@ class MovementsService(object):
         :return: dict object with current client position
         """
         try:
-            with fdb.connect(
-                    dsn=self.app_config.get("FIREBIRD_DSN"),
-                    user=self.app_config.get("FIREBIRD_USER"),
-                    password=self.app_config.get("FIREBIRD_PASSWORD")) as connection:
-                cursor = connection.cursor()
-                rows = cursor.execute('''SELECT * FROM GET_MOVEMENTS(?)''', (client_id,)).fetchall()
+            async with engine.connect() as session:
+                result = await session.execute(text('SELECT * FROM GET_MOVEMENTS(:client_id)'),
+                                               {"client_id": client_id})
+                rows = result.fetchall()
                 if rows:
                     last_operations = []
                     for row in list(filter(lambda x: (x[5] != "balance-0"), rows)):

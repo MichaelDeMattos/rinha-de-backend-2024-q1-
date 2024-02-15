@@ -1,7 +1,7 @@
 version: "3.1"
 
 services:
-  api_instance_a:
+  api_rinha_backend_master: &instance_a
       container_name: api_instance_a
       build:
         context: .
@@ -21,49 +21,47 @@ services:
           limits:
             cpus: '0.25'
             memory: '175MB'
+      depends_on:
+        - postgres_db
       network_mode: "host"
 
-  api_instance_b:
+  api_rinha_backend_slave:
+    <<: *instance_a
     container_name: api_instance_b
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./src:/home/foo/rinha-de-backend-2024-q1/src
     ports:
       - '127.0.0.1:8001:8001'
-    env_file:
-      - .env
     environment:
       INSTANCE_BIND: "127.0.0.1:8001"
       INSTANCE_WORKERS: "1"
       INSTANCE_NAME: "api_instance_b"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: '175MB'
-    depends_on:
-      - api_instance_a
-    network_mode: "host"
 
-  firebird_db:
-    container_name: firebird_db
-    image: jacobalberty/firebird
+  postgres_db:
+    container_name: postgres_db
+    image: postgres:15
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./postgresql.conf:/docker-entrypoint-initdb.d/postgresql.conf
+      - ./migrate.sql:/docker-entrypoint-initdb.d/migrate.sql
+    command: postgres -c config_file=/docker-entrypoint-initdb.d/postgresql.conf
     ports:
-      - '127.0.0.1:3050:3050'
+      - "127.0.0.1:5432:5432"
     deploy:
       resources:
         limits:
           cpus: '0.75'
           memory: '100MB'
-    env_file:
-      - .env
-    environment:
-      FIREBIRD_USER: ${FIREBIRD_USER}
-      FIREBIRD_PASSWORD: ${FIREBIRD_PASSWORD}
-      TZ: ${TZ}
-      FIREBIRD_DATABASE: ${FIREBIRD_DATABASE}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready --dbname=${POSTGRES_DB} --username=${POSTGRES_USER}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     network_mode: "host"
 
   nginx_server:

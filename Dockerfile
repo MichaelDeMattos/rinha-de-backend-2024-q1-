@@ -23,4 +23,4 @@ COPY . /home/foo/rinha-de-backend-2024-q1/
 USER 1000
 WORKDIR /home/foo/rinha-de-backend-2024-q1/src
 ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["wait-for-it -h 127.0.0.1 -p 3050 --strict --timeout=300 -- python init.py"]
+CMD ["wait-for-it -h 127.0.0.1 -p 5432 --strict --timeout=300 -- python init.py"]
