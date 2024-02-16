@@ -3,6 +3,10 @@ version: "3.1"
 services:
   api_rinha_backend_master: &instance_a
       container_name: api_instance_a
+      ulimits:
+        nofile:
+          soft: 100000
+          hard: 100000
       build:
         context: .
         dockerfile: Dockerfile
@@ -14,13 +18,13 @@ services:
         - .env
       environment:
         INSTANCE_BIND: "127.0.0.1:8000"
-        INSTANCE_WORKERS: "1"
+        INSTANCE_WORKERS: "5"
         INSTANCE_NAME: "api_instance_a"
       deploy:
         resources:
           limits:
-            cpus: '0.25'
-            memory: '175MB'
+            cpus: '1'
+            memory: '700MB'
       depends_on:
         - postgres_db
       network_mode: "host"
@@ -32,15 +36,21 @@ services:
       - '127.0.0.1:8001:8001'
     environment:
       INSTANCE_BIND: "127.0.0.1:8001"
-      INSTANCE_WORKERS: "1"
+      INSTANCE_WORKERS: "5"
       INSTANCE_NAME: "api_instance_b"
 
   postgres_db:
     container_name: postgres_db
-    image: postgres:15
+    image: postgres:15-alpine
     restart: always
     env_file:
       - .env
+    logging:
+      driver: none
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -55,8 +65,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.75'
-          memory: '100MB'
+          cpus: '3'
+          memory: '500MB'
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready --dbname=${POSTGRES_DB} --username=${POSTGRES_USER}" ]
       interval: 5s
@@ -67,9 +77,13 @@ services:
   nginx_server:
     container_name: nginx_server
     restart: always
-    image: nginx
+    image: nginx:1.25.4-alpine
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
     ports:
       - target: 9999
         published: 9999
@@ -81,6 +95,6 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: '50MB'
+          cpus: '1'
+          memory: '250MB'
     network_mode: "host"

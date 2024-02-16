@@ -21,6 +21,6 @@ if __name__ == '__main__':
         asyncio.run(setup())
         subprocess.call(
             f'hypercorn --bind="{os.getenv("INSTANCE_BIND")}" '
-            f'--workers={os.getenv("INSTANCE_WORKERS")} --max-requests 9999 app:app', shell=True)
+            f'--workers={os.getenv("INSTANCE_WORKERS")} --max-requests 999999 --worker-class uvloop app:app', shell=True)
     except Exception:
         traceback.print_exc()

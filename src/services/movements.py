@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import fdb
 import traceback
 from engines import engine
 from datetime import datetime
@@ -82,27 +81,24 @@ class MovementsService(object):
                 if trans_tipo == 'c':
                     try:
                         result = await session.execute(
-                            text('EXECUTE PROCEDURE INSERT_CREDIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
-                            {'client_id': cli_id,  'trans_valor': abs(trans_valor), 'trans_desc': trans_desc})
+                            text('SELECT * FROM INSERT_CREDIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
+                            {'client_id': cli_id, 'trans_valor': abs(trans_valor), 'trans_desc': trans_desc})
                         limite, saldo = result.fetchone()
-                        await session.commit()
                         return 200, {'limite': limite, 'saldo': saldo}
-                    except fdb.fbcore.DatabaseError as e:
-                        if 'CLIENT_NOT_FOUND' in e.args[0]:
+                    except Exception as e:
+                        if 'Client not found' in e.args[0]:
                             return 404, f'404 - {await http_status_message(404)}'
                         else:
                             return 422, f'422 - {await http_status_message(422)}'
                 elif trans_tipo == 'd':
                     try:
                         result = await session.execute(
-                            text('EXECUTE PROCEDURE INSERT_DEBIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
+                            text('SELECT * FROM INSERT_DEBIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
                             {'client_id': cli_id, 'trans_valor': abs(trans_valor), 'trans_desc': trans_desc})
                         limite, saldo = result.fetchone()
-                        await session.commit()
                         return 200, {'limite': limite, 'saldo': saldo}
-                    except fdb.fbcore.DatabaseError as e:
-                        print(e.args[0])
-                        if 'CLIENT_NOT_FOUND' in e.args[0]:
+                    except Exception as e:
+                        if 'Client not found' in e.args[0]:
                             return 404, f'404 - {await http_status_message(404)}'
                         else:
                             return 422, f'422 - {await http_status_message(422)}'
@@ -115,12 +111,14 @@ class MovementsService(object):
         :return: http_status, http_message
         """
         try:
-            status, message = await self.insert_new_operation(
-                cli_id=self.inputted_params.id,
-                trans_valor=self.inputted_params.valor,
-                trans_desc=self.inputted_params.descricao,
-                trans_tipo=self.inputted_params.tipo)
-            return status, message
+            if result := await self.insert_new_operation(
+                    cli_id=self.inputted_params.id,
+                    trans_valor=self.inputted_params.valor,
+                    trans_desc=self.inputted_params.descricao,
+                    trans_tipo=self.inputted_params.tipo):
+                return result[0], result[1]
+            else:
+                return 422, f'422 - {await http_status_message(422)}'
         except Exception:
             traceback.print_exc()
             return 503, f'503 - {await http_status_message(503)}'

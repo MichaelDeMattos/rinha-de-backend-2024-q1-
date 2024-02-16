@@ -18,6 +18,8 @@ async def transactions_api(client_id: int) -> make_response:
     :return: make_response = http_response
     """
     try:
+        if client_id not in (1, 2, 3, 4, 5):
+            return await make_response(f'404 - {http_status_message(404)}', 404)
         body = await request.data
         body_parse = json.loads(body)
         body_parse.update({'id': client_id})
@@ -25,18 +27,17 @@ async def transactions_api(client_id: int) -> make_response:
         movements_object = MovementsService(inputted_params=validated_inputted_params, app_config=current_app.config)
         http_status, http_message = await movements_object.update_current_user_account_position()
         return await make_response(
-            jsonify(http_message) if http_status == 200 else http_message, http_status)
+            http_message if http_status == 200 else http_message, http_status)
     except ValidationError as e:
-        traceback.print_exc()
-        return await make_response(jsonify({
-            'response': f'400 - {await http_status_message(400)}',
+        return await make_response(({
+            'response': f'422 - {await http_status_message(422)}',
             'reason': e.errors(),
-            'status': 400}), 400)
+            'status': 422}), 422)
     except Exception:
         traceback.print_exc()
-        return await make_response(jsonify({
+        return await make_response({
             'response': f'503 - {await http_status_message(503)}',
-            'status': 503}), 503)
+            'status': 503}, 503)
 
 
 @movements_bp.route('/clientes/<int:client_id>/extrato', methods=['GET'])
@@ -49,9 +50,9 @@ async def statement_api(client_id: int) -> make_response:
         movements_object = MovementsService(client_id=client_id, app_config=current_app.config)
         http_status, http_message = await movements_object.get_client_statement()
         return await make_response(
-            jsonify(http_message) if http_status == 200 else http_message, http_status)
+            http_message if http_status == 200 else http_message, http_status)
     except Exception:
         traceback.print_exc()
-        return await make_response(jsonify({
+        return await make_response({
             'response': f'503 - {await http_status_message(503)}',
-            'status': 503}), 503)
+            'status': 503}, 503)
