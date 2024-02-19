@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
+
 import os
 import traceback
-from engines import engine
 from datetime import datetime
+
 from sqlalchemy import text
-from utils.http import http_status_message
+
+from engines import engine
 from schemas.movements import TransactionSchema
+from utils.http import http_status_message
 
 
 class TransactionsService(object):
@@ -27,45 +30,40 @@ class TransactionsService(object):
             async with engine.connect() as session:
                 returning_object = {}
                 result = await session.execute(text('''
-                    select
-                        pc.saldo_total as total,
-                        to_char(current_timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as data_extrato,
-                        pc.saldo_limite as limite,
-                        ec.valor as valor,
-                        ec.tipo as tipo,
-                        ec.descricao as descricao,
-                        to_char(ec.realizada_em, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as realizada_em
-                    from posicao_cliente pc
-                    left join extrato_cliente ec
-                    on ec.cliente_id = pc.cliente_id
-                    where pc.cliente_id = :cliente_id
-                    order by ec.realizada_em desc
-                    limit 10'''), {'cliente_id': client_id})
+                    SELECT
+                      row_to_json(posicao_cliente) as posicao_cliente
+                    FROM (
+                      SELECT
+                        posicao_cliente.saldo_total "saldo_total",
+                        posicao_cliente.saldo_limite "limite",
+                        to_char(current_timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') "data_extrato",
+                        (
+                          SELECT json_agg(
+                            row_to_json(extrato_cliente)
+                          )
+                          FROM (
+                            SELECT
+                              extrato_cliente.descricao "descricao",
+                              extrato_cliente.tipo "tipo",
+                              extrato_cliente.valor "valor",
+                              to_char(extrato_cliente.realizada_em, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') "realizada_em"
+                            FROM
+                              extrato_cliente
+                            WHERE
+                              extrato_cliente.cliente_id = :cliente_id
+                            ORDER BY
+                              extrato_cliente.realizada_em DESC
+                            LIMIT 10
+                          ) extrato_cliente
+                        ) as ultimas_transacoes
+                      FROM
+                        posicao_cliente as posicao_cliente
+                      WHERE
+                        posicao_cliente.cliente_id = :cliente_id
+                    ) posicao_cliente'''), {'cliente_id': client_id})
                 if result:
-                    rows = result.fetchall()
-                    for index, row in enumerate(rows):
-                        total, data_extrato, limite, valor, tipo, descricao, realizada_em = row
-                        if index == 0:
-                            returning_object.update({
-                                'saldo': {
-                                    'total': total,
-                                    'data_extrato': data_extrato,
-                                    'limite': limite}})
-                            if valor and tipo and descricao and realizada_em:
-                                returning_object.update({
-                                    'ultimas_transacoes': [{
-                                        'valor': valor,
-                                        'tipo': tipo,
-                                        'descricao': descricao,
-                                        'realizada_em': realizada_em}]})
-                            else:
-                                returning_object.update({'ultimas_transacoes': []})
-                        else:
-                            returning_object['ultimas_transacoes'].append({
-                                'valor': valor,
-                                'tipo': tipo,
-                                'descricao': descricao,
-                                'realizada_em': realizada_em})
+                    returning_object = result.fetchone()[0]
+                    print(returning_object)
                     return returning_object
                 else:
                     return returning_object
@@ -79,10 +77,7 @@ class TransactionsService(object):
         """
         try:
             if client_account := await self.get_client_position_account(client_id=self.client_id, limit=10):
-                balance = client_account.get('saldo')
-                balance['data_extrato'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-                last_operations = client_account.get('ultimas_transacoes')
-                return 200, {'saldo': balance, 'ultimas_transacoes': last_operations}
+                return 200, client_account
             else:
                 return 404, f'404 - {await http_status_message(404)}'
         except Exception:

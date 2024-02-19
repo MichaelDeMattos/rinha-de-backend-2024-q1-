@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from enum import StrEnum
-
 from pydantic import BaseModel, constr, field_validator
 
 
