@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import os
 import traceback
 from engines import engine
 from datetime import datetime
@@ -8,7 +8,7 @@ from utils.http import http_status_message
 from schemas.movements import TransactionSchema
 
 
-class MovementsService(object):
+class TransactionsService(object):
     def __init__(
             self,
             inputted_params: TransactionSchema = None,
@@ -25,29 +25,50 @@ class MovementsService(object):
         """
         try:
             async with engine.connect() as session:
-                result = await session.execute(text('SELECT * FROM GET_MOVEMENTS(:client_id)'),
-                                               {"client_id": client_id})
-                rows = result.fetchall()
-                if rows:
-                    last_operations = []
-                    for row in list(filter(lambda x: (x[5] != "balance-0"), rows)):
-                        last_operations.append({
-                            'valor': int(row[8]),
-                            'tipo': str(row[7]),
-                            'descricao': str(row[5]),
-                            'realizada_em': row[6].strftime('%Y-%m-%dT%H:%M:%S.%fZ')})
-                    return {
-                        'saldo': {
-                            'total': int(rows[0][3]),
-                            'limite': int(rows[0][4]),
-                        },
-                        'ultimas_transacoes': last_operations,
-                        'cliente': {
-                            'id': int(rows[0][1]),
-                            'limite': int(rows[0][2])}
-                    }
+                returning_object = {}
+                result = await session.execute(text('''
+                    select
+                        pc.saldo_total as total,
+                        to_char(current_timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as data_extrato,
+                        pc.saldo_limite as limite,
+                        ec.valor as valor,
+                        ec.tipo as tipo,
+                        ec.descricao as descricao,
+                        to_char(ec.realizada_em, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as realizada_em
+                    from posicao_cliente pc
+                    left join extrato_cliente ec
+                    on ec.cliente_id = pc.cliente_id
+                    where pc.cliente_id = :cliente_id
+                    order by ec.realizada_em desc
+                    limit 10'''), {'cliente_id': client_id})
+                if result:
+                    rows = result.fetchall()
+                    for index, row in enumerate(rows):
+                        total, data_extrato, limite, valor, tipo, descricao, realizada_em = row
+                        if index == 0:
+                            returning_object.update({
+                                'saldo': {
+                                    'total': total,
+                                    'data_extrato': data_extrato,
+                                    'limite': limite}})
+                            if valor and tipo and descricao and realizada_em:
+                                returning_object.update({
+                                    'ultimas_transacoes': [{
+                                        'valor': valor,
+                                        'tipo': tipo,
+                                        'descricao': descricao,
+                                        'realizada_em': realizada_em}]})
+                            else:
+                                returning_object.update({'ultimas_transacoes': []})
+                        else:
+                            returning_object['ultimas_transacoes'].append({
+                                'valor': valor,
+                                'tipo': tipo,
+                                'descricao': descricao,
+                                'realizada_em': realizada_em})
+                    return returning_object
                 else:
-                    return {}
+                    return returning_object
         except Exception:
             traceback.print_exc()
             return {}
@@ -81,11 +102,17 @@ class MovementsService(object):
                 if trans_tipo == 'c':
                     try:
                         result = await session.execute(
-                            text('SELECT * FROM INSERT_CREDIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
-                            {'client_id': cli_id, 'trans_valor': abs(trans_valor), 'trans_desc': trans_desc})
+                            text('''SELECT * FROM INSERT_CREDIT(
+                                :client_id, :trans_valor, :trans_desc, :trans_ref_date)'''),
+                            {'client_id': cli_id,
+                             'trans_valor': abs(trans_valor),
+                             'trans_desc': trans_desc,
+                             'trans_ref_date': datetime.now()})
                         limite, saldo = result.fetchone()
                         return 200, {'limite': limite, 'saldo': saldo}
                     except Exception as e:
+                        if os.getenv('DEBUG') == 'true':
+                            traceback.print_exc()
                         if 'Client not found' in e.args[0]:
                             return 404, f'404 - {await http_status_message(404)}'
                         else:
@@ -93,11 +120,13 @@ class MovementsService(object):
                 elif trans_tipo == 'd':
                     try:
                         result = await session.execute(
-                            text('SELECT * FROM INSERT_DEBIT_ON_MOVEMENTS(:client_id, :trans_valor, :trans_desc)'),
-                            {'client_id': cli_id, 'trans_valor': abs(trans_valor), 'trans_desc': trans_desc})
+                            text('SELECT * FROM INSERT_DEBIT(:client_id, :trans_valor, :trans_desc)'),
+                            {'client_id': cli_id, 'trans_valor': abs(trans_valor) * -1, 'trans_desc': trans_desc})
                         limite, saldo = result.fetchone()
                         return 200, {'limite': limite, 'saldo': saldo}
                     except Exception as e:
+                        if os.getenv('DEBUG') == 'true':
+                            traceback.print_exc()
                         if 'Client not found' in e.args[0]:
                             return 404, f'404 - {await http_status_message(404)}'
                         else:

@@ -13,12 +13,10 @@ async def create_user(user: ClientSchema) -> bool:
     try:
         async with engine.connect() as session:
             await session.execute(text(
-                "INSERT INTO MOVEMENTS"
-                " (CLI_ID, CLI_LIM_ORG, SALDO_TOTAL,"
-                "  SALDO_LIM, UTL_TRANS_DESC, UTL_TRANS_REAL_EM,"
-                "  UTL_TRANS_TIPO, UTL_TRANS_VALOR)"
+                "INSERT INTO POSICAO_CLIENTE"
+                " (CLIENTE_ID, CLIENTE_LIMITE, SALDO_LIMITE, SALDO_TOTAL)"
                 "  VALUES"
-                " (:user_id, :user_limite, 0, :user_limite, 'balance-0', CURRENT_TIMESTAMP, 'c', 0)"),
+                " (:user_id, :user_limite, :user_limite, 0)"),
                 {"user_id": user.id, "user_limite": user.limite})
             await session.commit()
         return True
@@ -31,7 +29,8 @@ async def remove_old_data_from_movements_table() -> bool:
     """Remove old data from Movements table"""
     try:
         async with engine.connect() as session:
-            await session.execute(text('DELETE FROM MOVEMENTS'))
+            await session.execute(text('DELETE FROM EXTRATO_CLIENTE'))
+            await session.execute(text('DELETE FROM POSICAO_CLIENTE'))
             await session.commit()
             return True
     except Exception:
