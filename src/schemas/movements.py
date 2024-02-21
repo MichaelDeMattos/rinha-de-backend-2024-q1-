@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from enum import StrEnum
-from pydantic import BaseModel, constr, field_validator
+from pydantic import BaseModel, constr, field_validator, conint
 
 
 class TransactionType(StrEnum):
@@ -11,13 +11,6 @@ class TransactionType(StrEnum):
 
 class TransactionSchema(BaseModel):
     id: int
-    valor: int
+    valor: conint(le=2147483647, gt=0)
     tipo: TransactionType
     descricao: constr(min_length=1, max_length=10)
-
-    @field_validator("valor")
-    @classmethod
-    def greater_then_zero(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("valor must be greater then zero")
-        return v

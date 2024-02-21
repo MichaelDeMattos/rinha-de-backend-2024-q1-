@@ -3,10 +3,8 @@
 import os
 import traceback
 from datetime import datetime
-
 from sqlalchemy import text
-
-from engines import engine
+from engines import db
 from schemas.movements import TransactionSchema
 from utils.http import http_status_message
 
@@ -27,46 +25,37 @@ class TransactionsService(object):
         :return: dict object with current client position
         """
         try:
-            async with engine.connect() as session:
-                returning_object = {}
+            async with db.begin() as session:
                 result = await session.execute(text('''
                     SELECT
-                      row_to_json(posicao_cliente) as posicao_cliente
+                        row_to_json(posicao_cliente) AS posicao_cliente
                     FROM (
-                      SELECT
-                        posicao_cliente.saldo_total "saldo_total",
-                        posicao_cliente.saldo_limite "limite",
-                        to_char(current_timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') "data_extrato",
-                        (
-                          SELECT json_agg(
-                            row_to_json(extrato_cliente)
-                          )
-                          FROM (
+                        select
+                            jsonb_build_object(
+                                'total', posicao_cliente.saldo_total,
+                                'limite', posicao_cliente.saldo_limite,
+                                'data_extrato', to_char(current_timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) as saldo,
+                          (SELECT json_agg(row_to_json(extrato_cliente))
+                        FROM (
                             SELECT
-                              extrato_cliente.descricao "descricao",
-                              extrato_cliente.tipo "tipo",
-                              extrato_cliente.valor "valor",
-                              to_char(extrato_cliente.realizada_em, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') "realizada_em"
+                                extrato_cliente.descricao AS descricao,
+                                extrato_cliente.tipo AS tipo,
+                                extrato_cliente.valor AS valor,
+                                to_char(extrato_cliente.realizada_em, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS realizada_em
                             FROM
-                              extrato_cliente
+                                extrato_cliente
                             WHERE
-                              extrato_cliente.cliente_id = :cliente_id
-                            ORDER BY
-                              extrato_cliente.realizada_em DESC
-                            LIMIT 10
-                          ) extrato_cliente
-                        ) as ultimas_transacoes
-                      FROM
-                        posicao_cliente as posicao_cliente
-                      WHERE
-                        posicao_cliente.cliente_id = :cliente_id
-                    ) posicao_cliente'''), {'cliente_id': client_id})
+                                extrato_cliente.cliente_id = :cliente_id
+                            ORDER BY extrato_cliente.realizada_em DESC
+                            LIMIT 10) extrato_cliente) AS ultimas_transacoes
+                        FROM
+                            posicao_cliente AS posicao_cliente
+                        WHERE
+                            posicao_cliente.cliente_id = :cliente_id) AS posicao_cliente'''), {'cliente_id': client_id})
                 if result:
-                    returning_object = result.fetchone()[0]
-                    print(returning_object)
-                    return returning_object
+                    return result.fetchone()[0]
                 else:
-                    return returning_object
+                    return {}
         except Exception:
             traceback.print_exc()
             return {}
@@ -93,7 +82,7 @@ class TransactionsService(object):
         :return: dict
         """
         try:
-            async with engine.connect() as session:
+            async with db.begin() as session:
                 if trans_tipo == 'c':
                     try:
                         result = await session.execute(
@@ -103,8 +92,10 @@ class TransactionsService(object):
                              'trans_valor': abs(trans_valor),
                              'trans_desc': trans_desc,
                              'trans_ref_date': datetime.now()})
-                        limite, saldo = result.fetchone()
-                        return 200, {'limite': limite, 'saldo': saldo}
+                        if result:
+                            return 200, result.fetchone()[0]
+                        else:
+                            return 404, f'404 - {await http_status_message(404)}'
                     except Exception as e:
                         if os.getenv('DEBUG') == 'true':
                             traceback.print_exc()
@@ -117,8 +108,10 @@ class TransactionsService(object):
                         result = await session.execute(
                             text('SELECT * FROM INSERT_DEBIT(:client_id, :trans_valor, :trans_desc)'),
                             {'client_id': cli_id, 'trans_valor': abs(trans_valor) * -1, 'trans_desc': trans_desc})
-                        limite, saldo = result.fetchone()
-                        return 200, {'limite': limite, 'saldo': saldo}
+                        if result:
+                            return 200, result.fetchone()[0]
+                        else:
+                            return 404, f'404 - {await http_status_message(404)}'
                     except Exception as e:
                         if os.getenv('DEBUG') == 'true':
                             traceback.print_exc()
