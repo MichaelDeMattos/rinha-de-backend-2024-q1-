@@ -30,24 +30,24 @@ class TransactionsService(object):
                     SELECT
                         row_to_json(posicao_cliente) AS posicao_cliente
                     FROM (
-                        select
+                        SELECT
                             jsonb_build_object(
                                 'total', posicao_cliente.saldo_total,
                                 'limite', posicao_cliente.saldo_limite,
                                 'data_extrato', to_char(current_timestamp, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) as saldo,
-                          (SELECT json_agg(row_to_json(extrato_cliente))
-                        FROM (
-                            SELECT
-                                extrato_cliente.descricao AS descricao,
-                                extrato_cliente.tipo AS tipo,
-                                extrato_cliente.valor AS valor,
-                                to_char(extrato_cliente.realizada_em, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS realizada_em
-                            FROM
-                                extrato_cliente
-                            WHERE
-                                extrato_cliente.cliente_id = :cliente_id
-                            ORDER BY extrato_cliente.realizada_em DESC
-                            LIMIT 10) extrato_cliente) AS ultimas_transacoes
+                            (SELECT coalesce(json_agg(row_to_json(extrato_cliente)), '[]')
+                             FROM (
+                                 SELECT
+                                     extrato_cliente.descricao AS descricao,
+                                     extrato_cliente.tipo AS tipo,
+                                     extrato_cliente.valor AS valor,
+                                     to_char(extrato_cliente.realizada_em, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS realizada_em
+                                 FROM
+                                     extrato_cliente
+                                 WHERE
+                                     extrato_cliente.cliente_id = :cliente_id
+                                 ORDER BY extrato_cliente.realizada_em DESC
+                                 LIMIT 10) extrato_cliente) AS ultimas_transacoes
                         FROM
                             posicao_cliente AS posicao_cliente
                         WHERE
@@ -85,8 +85,9 @@ class TransactionsService(object):
             async with db.begin() as session:
                 if trans_tipo == 'c':
                     try:
+                        await session.execute(text(f'select pg_advisory_xact_lock({cli_id})'))
                         result = await session.execute(
-                            text('''SELECT * FROM INSERT_CREDIT(
+                            text('''SELECT INSERT_CREDIT(
                                 :client_id, :trans_valor, :trans_desc, :trans_ref_date)'''),
                             {'client_id': cli_id,
                              'trans_valor': abs(trans_valor),
@@ -95,7 +96,7 @@ class TransactionsService(object):
                         if result:
                             return 200, result.fetchone()[0]
                         else:
-                            return 404, f'404 - {await http_status_message(404)}'
+                            return 422, f'422 - {await http_status_message(422)}'
                     except Exception as e:
                         if os.getenv('DEBUG') == 'true':
                             traceback.print_exc()
@@ -105,20 +106,29 @@ class TransactionsService(object):
                             return 422, f'422 - {await http_status_message(422)}'
                 elif trans_tipo == 'd':
                     try:
-                        result = await session.execute(
-                            text('SELECT * FROM INSERT_DEBIT(:client_id, :trans_valor, :trans_desc)'),
+                        await session.execute(text(f'select pg_advisory_xact_lock({cli_id})'))
+                        result_update_client_position = await session.execute(
+                            text('SELECT INSERT_DEBIT(:client_id, :trans_valor, :trans_desc)'),
                             {'client_id': cli_id, 'trans_valor': abs(trans_valor) * -1, 'trans_desc': trans_desc})
-                        if result:
-                            return 200, result.fetchone()[0]
+                        result_update_client_position_json = result_update_client_position.fetchone()[0]
+                        if result_update_client_position_json:
+                            await session.execute(
+                                text('''
+                                    INSERT INTO EXTRATO_CLIENTE (DESCRICAO, TIPO, VALOR, CLIENTE_ID)
+                                    VALUES (:trans_desc, 'd', :trans_valor, :client_id)'''),
+                                {'client_id': cli_id, 'trans_valor': abs(trans_valor) * -1, 'trans_desc': trans_desc})
+                            await session.commit()
+                            return 200, result_update_client_position_json
                         else:
-                            return 404, f'404 - {await http_status_message(404)}'
+                            return 422, {'error': f'422 - {await http_status_message(422)}'}
                     except Exception as e:
+                        traceback.print_exc()
                         if os.getenv('DEBUG') == 'true':
                             traceback.print_exc()
                         if 'Client not found' in e.args[0]:
-                            return 404, f'404 - {await http_status_message(404)}'
+                            return 404, {'error': f'404 - {await http_status_message(404)}'}
                         else:
-                            return 422, f'422 - {await http_status_message(422)}'
+                            return 422, {'error': f'422 - {await http_status_message(422)}'}
         except Exception:
             traceback.print_exc()
             return 422, f'422 - {await http_status_message(422)}'

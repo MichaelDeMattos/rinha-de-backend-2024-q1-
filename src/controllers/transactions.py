@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import json
 import os
 import traceback
 from pydantic import ValidationError
@@ -23,13 +22,16 @@ async def transactions_api(client_id: int) -> make_response:
             return await make_response({
                 'response': f'404 - {await http_status_message(404)}',
                 'status': 404}, 404)
-        body = await request.data
-        body_parse = json.loads(body)
+        body_parse = await request.json
+        if not body_parse:
+            return await make_response({
+                'response': f'422 - {await http_status_message(422)}',
+                'status': 422}, 422)
         body_parse.update({'id': client_id})
         validated_inputted_params = TransactionSchema(**body_parse)
         movements_object = TransactionsService(inputted_params=validated_inputted_params, app_config=current_app.config)
         http_status, http_message = await movements_object.update_current_user_account_position()
-        return await make_response(http_message if http_status == 200 else http_message, http_status)
+        return await make_response(http_message, http_status)
     except ValidationError as e:
         if os.getenv('DEBUG') == 'true':
             traceback.print_exc()

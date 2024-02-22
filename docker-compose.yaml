@@ -18,7 +18,7 @@ services:
         - .env
       environment:
         INSTANCE_BIND: "127.0.0.1:8000"
-        INSTANCE_WORKERS: "10"
+        INSTANCE_WORKERS: "1"
         INSTANCE_NAME: "api_instance_a"
       depends_on:
         - postgres_db
@@ -31,7 +31,7 @@ services:
       - '127.0.0.1:8001:8001'
     environment:
       INSTANCE_BIND: "127.0.0.1:8001"
-      INSTANCE_WORKERS: "5"
+      INSTANCE_WORKERS: "1"
       INSTANCE_NAME: "api_instance_b"
 
   postgres_db:
@@ -52,9 +52,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: GMT-3
     volumes:
-      - ./postgresql.conf:/docker-entrypoint-initdb.d/postgresql.conf
       - ./migrate.sql:/docker-entrypoint-initdb.d/migrate.sql
-    command: postgres -c config_file=/docker-entrypoint-initdb.d/postgresql.conf
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
