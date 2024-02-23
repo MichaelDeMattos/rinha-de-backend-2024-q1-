@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import traceback
-from engines import engine
+from engines import connection_poll
 from sqlalchemy import text
 from schemas.client import ClientListSchema, ClientSchema
 
@@ -11,14 +11,15 @@ async def create_user(user: ClientSchema) -> bool:
     :return:
     """
     try:
-        async with engine.connect() as session:
-            await session.execute(text(
-                "INSERT INTO POSICAO_CLIENTE"
-                " (CLIENTE_ID, CLIENTE_LIMITE, SALDO_LIMITE, SALDO_TOTAL)"
-                "  VALUES"
-                " (:user_id, :user_limite, :user_limite, 0)"),
-                {"user_id": user.id, "user_limite": user.limite})
-            await session.commit()
+        session = connection_poll.connect()
+        cursor = session.cursor()
+        cursor.execute(
+            "INSERT INTO POSICAO_CLIENTE"
+            " (CLIENTE_ID, CLIENTE_LIMITE, SALDO_LIMITE, SALDO_TOTAL)"
+            "  VALUES"
+            " (%(user_id)s, %(user_limite)s, %(user_limite)s, 0)",
+            {"user_id": user.id, "user_limite": user.limite})
+        session.commit()
         return True
     except Exception:
         traceback.print_exc()
@@ -28,11 +29,12 @@ async def create_user(user: ClientSchema) -> bool:
 async def remove_old_data_from_movements_table() -> bool:
     """Remove old data from Movements table"""
     try:
-        async with engine.connect() as session:
-            await session.execute(text('DELETE FROM EXTRATO_CLIENTE'))
-            await session.execute(text('DELETE FROM POSICAO_CLIENTE'))
-            await session.commit()
-            return True
+        session = connection_poll.connect()
+        cursor = session.cursor()
+        cursor.execute('DELETE FROM EXTRATO_CLIENTE')
+        cursor.execute('DELETE FROM POSICAO_CLIENTE')
+        session.commit()
+        return True
     except Exception:
         traceback.print_exc()
         return False
@@ -46,6 +48,6 @@ async def make_initial_setup(users: list) -> None:
             for user in validated_users.each_item:
                 if await create_user(user=user):
                     print(f'User: {user.id} was created in database with successfully!!!')
-        await engine.dispose()
+        connection_poll.dispose()
     except Exception:
         traceback.print_exc()
