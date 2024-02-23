@@ -57,7 +57,7 @@ class TransactionsService(object):
             result = cursor.fetchone()
             if result:
                 cursor.close()
-                connection_poll.dispose()
+                session.close()
                 return result[0]
             else:
                 return {}
@@ -95,8 +95,9 @@ class TransactionsService(object):
                     cursor.execute(f"SELECT INSERT_CREDIT({cli_id}, {trans_valor}, '{trans_desc}', '{datetime.now()}')")
                     result = cursor.fetchone()
                     if result:
+                        session.commit()
                         cursor.close()
-                        connection_poll.dispose()
+                        session.close()
                         return 200, result[0]
                     else:
                         return 422, f'422 - {await http_status_message(422)}'
@@ -109,18 +110,21 @@ class TransactionsService(object):
                         return 422, f'422 - {await http_status_message(422)}'
             elif trans_tipo == 'd':
                 try:
-                    await session.execute(text(f'select pg_advisory_xact_lock({cli_id})'))
-                    result_update_client_position = await session.execute(
-                        text('SELECT INSERT_DEBIT(:client_id, :trans_valor, :trans_desc)'),
-                        {'client_id': cli_id, 'trans_valor': abs(trans_valor) * -1, 'trans_desc': trans_desc})
-                    result_update_client_position_json = result_update_client_position.fetchone()[0]
+                    cursor.execute(f'select pg_advisory_xact_lock({cli_id})')
+                    cursor.execute(
+                        f"SELECT INSERT_DEBIT({cli_id}, {trans_valor}, '{trans_desc}')")
+                    result_update_client_position_json = cursor.fetchone()[0]
                     if result_update_client_position_json:
-                        await session.execute(
-                            text('''
-                                INSERT INTO EXTRATO_CLIENTE (DESCRICAO, TIPO, VALOR, CLIENTE_ID)
-                                VALUES (:trans_desc, 'd', :trans_valor, :client_id)'''),
-                            {'client_id': cli_id, 'trans_valor': abs(trans_valor) * -1, 'trans_desc': trans_desc})
-                        await session.commit()
+                        cursor.execute('''
+                            INSERT INTO EXTRATO_CLIENTE
+                                (DESCRICAO, TIPO, VALOR, CLIENTE_ID) 
+                                    VALUES
+                                (%(trans_desc)s, 'd', %(trans_valor)s, %(client_id)s)''',
+                                       {'client_id': cli_id, 'trans_valor': abs(trans_valor) * -1,
+                                        'trans_desc': trans_desc})
+                        session.commit()
+                        cursor.close()
+                        session.close()
                         return 200, result_update_client_position_json
                     else:
                         return 422, {'error': f'422 - {await http_status_message(422)}'}
